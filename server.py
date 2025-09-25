@@ -96,11 +96,55 @@ def upload():
 
         # Return the publicly-accessible URL to client (with cache bust param)
         result_url = url_for("serve_upload", filename=RESULT_FILENAME, _external=True)
+        result_url += f"?v={int(os.path.getmtime(output_path))}"  # add timestamp of last modification
+        return jsonify({"result": result_url})
         return jsonify({"result": result_url})
 
     except Exception as e:
         # Return the error message (useful for debugging; in production, sanitize)
         return jsonify({"error": str(e)}), 500
+    
+@app.route("/multi-upload", methods=["POST"])
+def multi_upload():
+    file = request.files.get("image")
+    if not file:
+        return jsonify({"error": "Image required"}), 400
+
+    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(filepath)
+
+    with open(filepath, "rb") as f:
+        img_bytes = f.read()
+    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+    # default prompts
+    default_prompts = [
+        "modern bright style with good looking walls, designer door if door is visible and patterned flooring if floor is visible",
+        "luxury style with wooden panels",
+        "vibe with good lighting good paintings on the walls and nice flooring if floor is visible"
+    ]
+
+    results = []
+    for p in default_prompts:
+        response = client.images.generate(
+            prompt=p,
+            model=MODEL_NAME,
+            condition_image=img_b64,
+            size="512x512"
+        )
+        image_url = response.data[0].url
+        img_resp = requests.get(image_url)
+        out_name = f"result_{len(results)+1}.jpg"
+        out_path = os.path.join(UPLOAD_FOLDER, out_name)
+        with open(out_path, "wb") as out:
+            out.write(img_resp.content)
+        results.append(
+            url_for("serve_upload", filename=out_name, _external=True)
+            + f"?v={int(os.path.getmtime(out_path))}"
+)
+
+    return jsonify({"results": results})
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000, debug=True)

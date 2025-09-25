@@ -1,32 +1,132 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-  <title>Kontext HomeAR</title>
+  <meta charset="utf-8" />
+  <title>Kontext HomeAR — Edit Chain Demo</title>
+  <style>
+    body { font-family: Arial; padding: 18px; max-width: 900px; }
+    .images { display:flex; gap:16px; align-items:flex-start; }
+    .images img { max-width: 420px; border:1px solid #ddd; }
+    label { display:block; margin-top:8px; }
+  </style>
 </head>
 <body>
-  <h2>Upload Room Photo</h2>
+  <h1>Upload Room Photo</h1>
+
   <form id="editForm" enctype="multipart/form-data">
-    <input type="file" id="image" name="image" accept="image/*" capture="environment"><br><br>
-    <input type="text" id="prompt" name="prompt" placeholder="e.g. Change wall to blue"><br><br>
-    <button type="submit">Edit</button>
+    <label>
+      Choose file (only needed for initial upload or to replace current):
+      <input type="file" id="image" name="image" accept="image/*" capture="environment">
+    </label>
+
+    <label>
+      Prompt:
+      <input id="prompt" name="prompt" type="text" style="width:80%;" placeholder="e.g. Change wall color to blue">
+    </label>
+
+    <div style="margin-top:10px;">
+      <button id="uploadEditBtn">Upload & Edit (use file)</button>
+      <button id="editLatestBtn" type="button">Edit Latest (use last result)</button>
+    </div>
   </form>
-  <br>
-  <div id="result"></div>
 
-  <script>
-    document.getElementById("editForm").onsubmit = async (e) => {
-      e.preventDefault();
-      let formData = new FormData(e.target);
-      let res = await fetch("/upload", { method: "POST", body: formData });
-      let json = await res.json();
+  <h2>Result</h2>
+  <div class="images">
+    <div>
+      <div><strong>Before</strong></div>
+      <img id="beforeImg" src="" alt="Before image">
+    </div>
+    <div>
+      <div><strong>After</strong></div>
+      <img id="editedImg" src="" alt="Edited image">
+    </div>
+  </div>
 
-      if (json.result) {
-        document.getElementById("result").innerHTML =
-          `<h3>Edited Image:</h3><img src="${json.result}" width="400">`;
+  <div id="status" style="margin-top:12px;color:#333;"></div>
+
+<script>
+async function getCurrent() {
+  const r = await fetch('/current');
+  const j = await r.json();
+  return j.current;
+}
+
+function cacheBust(url) {
+  return url + '?t=' + Date.now();
+}
+
+document.getElementById('uploadEditBtn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  await submitForm(false);
+});
+
+document.getElementById('editLatestBtn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  await submitForm(true);
+});
+
+async function submitForm(useLast) {
+  const status = document.getElementById('status');
+  status.innerText = 'Processing... (this may take several seconds)';
+  const formData = new FormData();
+  const fileInput = document.getElementById('image');
+  const prompt = document.getElementById('prompt').value || '';
+
+  formData.append('prompt', prompt);
+  formData.append('use_last', useLast ? 'true' : 'false');
+
+  if (!useLast) {
+    // must include a file when not using last
+    if (!fileInput.files || fileInput.files.length === 0) {
+      alert('Please choose a file to upload (or click "Edit Latest").');
+      status.innerText = '';
+      return;
+    }
+    formData.append('image', fileInput.files[0]);
+  } else {
+    // if using last, do NOT append file - ensure the file input won't be sent
+    // (we simply don't append it to FormData)
+  }
+
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const json = await res.json();
+
+    if (json.result) {
+      // set edited image
+      const edited = document.getElementById('editedImg');
+      edited.src = cacheBust(json.result);
+
+      // set before: if we uploaded a new file -> preview that file; otherwise use previous result
+      const before = document.getElementById('beforeImg');
+      if (!useLast && fileInput.files && fileInput.files.length > 0) {
+        const reader = new FileReader();
+        reader.onload = (ev) => { before.src = ev.target.result; };
+        reader.readAsDataURL(fileInput.files[0]);
+        // clear file input so subsequent "Edit Latest" won't resend the original file unintentionally
+        fileInput.value = '';
       } else {
-        document.getElementById("result").innerText = "Error: " + JSON.stringify(json);
+        const cur = await getCurrent();
+        if (cur) before.src = cacheBust(cur);
       }
-    };
-  </script>
+
+      status.innerText = 'Done.';
+    } else {
+      status.innerText = 'Error: ' + (json.error || JSON.stringify(json));
+    }
+  } catch (err) {
+    status.innerText = 'Request failed: ' + err;
+  }
+}
+
+// On load, show current result if present
+(async () => {
+  const cur = await getCurrent();
+  if (cur) {
+    document.getElementById('beforeImg').src = cacheBust(cur);
+    document.getElementById('editedImg').src = cacheBust(cur);
+  }
+})();
+</script>
 </body>
 </html>

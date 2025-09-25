@@ -1,0 +1,15 @@
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+kontext-api-env/
+
+# Uploads & outputs
+uploads/
+outputs/
+
+# OS files
+.DS_Store

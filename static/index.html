@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Kontext HomeAR</title>
+</head>
+<body>
+  <h2>Upload Room Photo</h2>
+  <form id="editForm" enctype="multipart/form-data">
+    <input type="file" id="image" name="image" accept="image/*" capture="environment"><br><br>
+    <input type="text" id="prompt" name="prompt" placeholder="e.g. Change wall to blue"><br><br>
+    <button type="submit">Edit</button>
+  </form>
+  <br>
+  <div id="result"></div>
+
+  <script>
+    document.getElementById("editForm").onsubmit = async (e) => {
+      e.preventDefault();
+      let formData = new FormData(e.target);
+      let res = await fetch("/upload", { method: "POST", body: formData });
+      let json = await res.json();
+
+      if (json.result) {
+        document.getElementById("result").innerHTML =
+          `<h3>Edited Image:</h3><img src="${json.result}" width="400">`;
+      } else {
+        document.getElementById("result").innerText = "Error: " + JSON.stringify(json);
+      }
+    };
+  </script>
+</body>
+</html>
